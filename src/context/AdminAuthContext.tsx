@@ -19,6 +19,8 @@ interface AdminAuthContextValue {
 
 const AdminAuthContext = createContext<AdminAuthContextValue | undefined>(undefined);
 
+const AUTHORIZED_SUPER_ADMIN_UID = 'RnURWhgg29XISmmiyLNj0pQfk0x1';
+
 export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -31,7 +33,30 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setFirebaseUser(fbUser);
         if (fbUser) {
           try {
-            const profile = await adminDb.getDoc<UserProfile>('users', fbUser.uid);
+            let profile = await adminDb.getDoc<UserProfile>('users', fbUser.uid);
+
+            // Auto-bootstrap designated platform super admin UID if needed
+            if ((!profile || profile.role !== 'SUPER_ADMIN') && fbUser.uid === AUTHORIZED_SUPER_ADMIN_UID) {
+              try {
+                const idToken = await fbUser.getIdToken();
+                const bootstrapRes = await fetch('/api/admin-bootstrap-superadmin', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${idToken}`,
+                  },
+                  body: JSON.stringify({ targetUid: fbUser.uid }),
+                });
+
+                if (bootstrapRes.ok) {
+                  await fbUser.getIdToken(true);
+                  profile = await adminDb.getDoc<UserProfile>('users', fbUser.uid);
+                }
+              } catch (bootstrapErr) {
+                console.warn('[Admin Bootstrap] Automatic bootstrap attempt failed:', bootstrapErr);
+              }
+            }
+
             if (profile && profile.role === 'SUPER_ADMIN') {
               setUser(profile);
             } else {
@@ -69,7 +94,28 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     if (isFirebaseConfigured && auth) {
       const res = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-      const profile = await adminDb.getDoc<UserProfile>('users', res.user.uid);
+      let profile = await adminDb.getDoc<UserProfile>('users', res.user.uid);
+
+      if ((!profile || profile.role !== 'SUPER_ADMIN') && res.user.uid === AUTHORIZED_SUPER_ADMIN_UID) {
+        try {
+          const idToken = await res.user.getIdToken();
+          const bootstrapRes = await fetch('/api/admin-bootstrap-superadmin', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ targetUid: res.user.uid }),
+          });
+
+          if (bootstrapRes.ok) {
+            await res.user.getIdToken(true);
+            profile = await adminDb.getDoc<UserProfile>('users', res.user.uid);
+          }
+        } catch (bootstrapErr) {
+          console.warn('[Admin Bootstrap] Bootstrap on login failed:', bootstrapErr);
+        }
+      }
 
       if (!profile || profile.role !== 'SUPER_ADMIN') {
         await signOut(auth);
