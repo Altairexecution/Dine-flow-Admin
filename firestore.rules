@@ -1,0 +1,289 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // AUTHENTICATION & RBAC HELPER FUNCTIONS
+    // =========================================================================
+
+    // Check if the request comes from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Check if user exists in the users collection
+    function userExists() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Fetch user profile data safely
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check if authenticated user is a Platform Super Admin
+    // Checks custom claims first, then falls back to Firestore user profile document
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.get('role', '') == 'SUPER_ADMIN' ||
+        (userExists() && getUserData().get('role', '') == 'SUPER_ADMIN')
+      );
+    }
+
+    // Get the user's assigned restaurantId
+    function getUserRestaurantId() {
+      return userExists() ? getUserData().get('restaurantId', '') : '';
+    }
+
+    // Get the user's role in their assigned restaurant
+    function getUserRole() {
+      return userExists() ? getUserData().get('role', 'STAFF') : 'STAFF';
+    }
+
+    // Check if user is a member (OWNER, MANAGER, or STAFF) of the given restaurant
+    function isRestaurantMember(restaurantId) {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        (getUserRestaurantId() == restaurantId)
+      );
+    }
+
+    // Check if user has management permissions (OWNER or MANAGER) for the restaurant
+    function isRestaurantAdmin(restaurantId) {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        (getUserRestaurantId() == restaurantId && (getUserRole() == 'OWNER' || getUserRole() == 'MANAGER'))
+      );
+    }
+
+    // Check if user is specifically the OWNER of the restaurant
+    function isRestaurantOwner(restaurantId) {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        (getUserRestaurantId() == restaurantId && getUserRole() == 'OWNER')
+      );
+    }
+
+    // Validate that incoming update does not modify protected fields (Role / RestaurantId)
+    function notChangingPrivileges() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'restaurantId']);
+    }
+
+    // =========================================================================
+    // USERS COLLECTION
+    // Schema: { id, email, name, role, restaurantId, restaurantName, status, createdAt, updatedAt }
+    // =========================================================================
+    match /users/{userId} {
+      // 1. Safe get: User can read their own profile (avoids bootstrap deadlock), or Super Admin, or restaurant manager
+      allow get: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isSuperAdmin() ||
+        (resource.data.get('restaurantId', '') == getUserRestaurantId() && (getUserRole() == 'OWNER' || getUserRole() == 'MANAGER'))
+      );
+
+      // 2. List: Super Admin can list all users; restaurant managers/owners can query users
+      allow list: if isSuperAdmin() || (isAuthenticated() && (getUserRole() == 'OWNER' || getUserRole() == 'MANAGER'));
+
+      // 3. Create: Super Admin or new authenticated user creating their own initial profile (cannot set role to SUPER_ADMIN)
+      allow create: if isSuperAdmin() || (
+        isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.get('role', 'STAFF') != 'SUPER_ADMIN'
+      );
+
+      // 4. Update: Super Admin can update any user; users can update own profile ONLY without altering role or restaurantId
+      allow update: if isSuperAdmin() || (
+        isAuthenticated() &&
+        request.auth.uid == userId &&
+        notChangingPrivileges()
+      );
+
+      // 5. Delete: Super Admin only
+      allow delete: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // RESTAURANTS COLLECTION
+    // Schema: { id, name, slug, logo, coverImage, tagline, description, phone, email, address, city, openingHours, amenities, socialLinks, bookingSettings, automationSettings, status, createdAt, updatedAt }
+    // =========================================================================
+    match /restaurants/{restaurantId} {
+      // Public Read: Visitors load restaurant profiles on /r/:slug and /r/:slug/menu
+      allow read: if true;
+
+      // Create: Platform Super Admin only
+      allow create: if isSuperAdmin();
+
+      // Update: Super Admin or Restaurant Owner/Manager
+      allow update: if isSuperAdmin() || isRestaurantAdmin(restaurantId);
+
+      // Delete: Platform Super Admin only
+      allow delete: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // BOOKINGS COLLECTION
+    // Schema: { id, bookingReference, restaurantId, tableId, tableName, customerId, customerName, customerPhone, customerEmail, bookingDate, bookingTime, durationMinutes, guestCount, seatingPreference, status, source, utm, ... }
+    // =========================================================================
+    match /bookings/{bookingId} {
+      // Read: Super Admin (fleet overview) or Restaurant Members (scoped to their restaurant)
+      allow read: if isSuperAdmin() || isRestaurantMember(resource.data.restaurantId);
+
+      // Create:
+      // a) Authenticated restaurant staff/admin
+      // b) Public customer reservations from public booking widget (validating required structure)
+      allow create: if isSuperAdmin() ||
+        (isAuthenticated() && isRestaurantMember(request.resource.data.restaurantId)) ||
+        (
+          request.resource.data.restaurantId is string &&
+          request.resource.data.customerName is string &&
+          request.resource.data.customerPhone is string &&
+          request.resource.data.bookingDate is string &&
+          request.resource.data.bookingTime is string &&
+          request.resource.data.get('status', 'pending') in ['pending', 'confirmed']
+        );
+
+      // Update: Super Admin or Restaurant Members (cannot change restaurantId)
+      allow update: if isSuperAdmin() || (
+        isRestaurantMember(resource.data.restaurantId) &&
+        request.resource.data.restaurantId == resource.data.restaurantId
+      );
+
+      // Delete: Super Admin or Restaurant Owner/Manager
+      allow delete: if isSuperAdmin() || isRestaurantAdmin(resource.data.restaurantId);
+    }
+
+    // =========================================================================
+    // CUSTOMERS COLLECTION (CRM)
+    // Schema: { id, restaurantId, name, phone, email, totalVisits, totalSpend, segment, tags, ... }
+    // =========================================================================
+    match /customers/{customerId} {
+      // Read: Super Admin or Restaurant Members
+      allow read: if isSuperAdmin() || isRestaurantMember(resource.data.restaurantId);
+
+      // Create:
+      // a) Authenticated restaurant staff/admin
+      // b) Public booking workflow recording a new guest profile
+      allow create: if isSuperAdmin() ||
+        (isAuthenticated() && isRestaurantMember(request.resource.data.restaurantId)) ||
+        (
+          request.resource.data.restaurantId is string &&
+          request.resource.data.phone is string &&
+          request.resource.data.name is string
+        );
+
+      // Update:
+      // a) Authenticated restaurant members
+      // b) Public booking recording recurring visits for matching restaurant & phone
+      allow update: if isSuperAdmin() ||
+        (isAuthenticated() && isRestaurantMember(resource.data.restaurantId)) ||
+        (
+          request.resource.data.restaurantId == resource.data.restaurantId &&
+          request.resource.data.phone == resource.data.phone
+        );
+
+      // Delete: Super Admin or Restaurant Owner/Manager
+      allow delete: if isSuperAdmin() || isRestaurantAdmin(resource.data.restaurantId);
+    }
+
+    // =========================================================================
+    // MENU CATEGORIES & ITEMS
+    // =========================================================================
+    match /menuCategories/{categoryId} {
+      // Public Read: Digital menu viewing
+      allow read: if true;
+
+      // Write: Super Admin or Restaurant Owner/Manager
+      allow create: if isSuperAdmin() || isRestaurantAdmin(request.resource.data.restaurantId);
+      allow update, delete: if isSuperAdmin() || isRestaurantAdmin(resource.data.restaurantId);
+    }
+
+    match /menuItems/{itemId} {
+      // Public Read: Digital menu viewing
+      allow read: if true;
+
+      // Create / Delete: Super Admin or Restaurant Owner/Manager
+      allow create: if isSuperAdmin() || isRestaurantAdmin(request.resource.data.restaurantId);
+      allow delete: if isSuperAdmin() || isRestaurantAdmin(resource.data.restaurantId);
+
+      // Update: Super Admin, Restaurant Admin, or Restaurant Staff (e.g. toggle availability)
+      allow update: if isSuperAdmin() || isRestaurantMember(resource.data.restaurantId);
+    }
+
+    // =========================================================================
+    // TABLES COLLECTION
+    // Schema: { id, restaurantId, tableNumber, capacity, type, status, position, isActive, currentGuestName, ... }
+    // =========================================================================
+    match /tables/{tableId} {
+      // Read: Public read required for live booking slot capacity calculations
+      allow read: if true;
+
+      // Create / Delete: Super Admin or Restaurant Owner/Manager
+      allow create: if isSuperAdmin() || isRestaurantAdmin(request.resource.data.restaurantId);
+      allow delete: if isSuperAdmin() || isRestaurantAdmin(resource.data.restaurantId);
+
+      // Update:
+      // a) Authenticated Restaurant Staff/Manager
+      // b) Public booking reservation assignment (status updated to 'reserved')
+      allow update: if isSuperAdmin() ||
+        isRestaurantMember(resource.data.restaurantId) ||
+        (
+          request.resource.data.restaurantId == resource.data.restaurantId &&
+          request.resource.data.status in ['available', 'reserved']
+        );
+    }
+
+    // =========================================================================
+    // BUSINESS EVENTS COLLECTION
+    // Schema: { id, restaurantId, eventType, entityType, entityId, payload, idempotencyKey, processed, createdAt }
+    // =========================================================================
+    match /events/{eventId} {
+      // Read: Super Admin or Restaurant Members
+      allow read: if isSuperAdmin() || isRestaurantMember(resource.data.restaurantId);
+
+      // Create: Authenticated member or valid public booking business event
+      allow create: if isSuperAdmin() ||
+        (isAuthenticated() && isRestaurantMember(request.resource.data.restaurantId)) ||
+        (
+          request.resource.data.restaurantId is string &&
+          request.resource.data.eventType in [
+            'BOOKING_CREATED', 'BOOKING_CONFIRMED', 'BOOKING_CANCELLED',
+            'BOOKING_NO_SHOW', 'CUSTOMER_CREATED', 'CUSTOMER_UPDATED',
+            'CUSTOMER_VISITED', 'FEEDBACK_RECEIVED'
+          ]
+        );
+
+      // Update / Delete: Super Admin only
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // AUTOMATION LOGS (WEBHOOK TELEMETRY)
+    // Schema: { id, restaurantId, eventId, eventType, destinationUrl, status, httpStatus, requestPayload, timestamp, ... }
+    // =========================================================================
+    match /automationLogs/{logId} {
+      // Read: Super Admin (fleet telemetry feed) or Restaurant Members
+      allow read: if isSuperAdmin() || isRestaurantMember(resource.data.restaurantId);
+
+      // Create / Update: Webhook execution engine (authenticated or public booking dispatch)
+      allow create: if isSuperAdmin() ||
+        (isAuthenticated() && isRestaurantMember(request.resource.data.restaurantId)) ||
+        (request.resource.data.restaurantId is string);
+
+      allow update: if isSuperAdmin() ||
+        (isAuthenticated() && isRestaurantMember(resource.data.restaurantId)) ||
+        (request.resource.data.restaurantId == resource.data.restaurantId);
+
+      // Delete: Super Admin only
+      allow delete: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // DEFAULT CATCH-ALL LOCK
+    // Lock down all other collections and subcollections
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if isSuperAdmin();
+    }
+  }
+}
