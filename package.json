@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bootstrap": "node scripts/bootstrap-superadmin.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "dotenv": "^16.4.7",
     "firebase": "^11.3.1",
     "firebase-admin": "^12.7.0",
     "lucide-react": "^1.16.0",
