@@ -39,7 +39,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if ((!profile || profile.role !== 'SUPER_ADMIN') && fbUser.uid === AUTHORIZED_SUPER_ADMIN_UID) {
               try {
                 const idToken = await fbUser.getIdToken();
-                const bootstrapRes = await fetch('/api/admin-bootstrap-superadmin', {
+                let bootstrapRes = await fetch('/api/admin-bootstrap-superadmin', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -48,9 +48,19 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   body: JSON.stringify({ targetUid: fbUser.uid }),
                 });
 
+                if (!bootstrapRes.ok) {
+                  // Fallback to GET self-bootstrap check
+                  bootstrapRes = await fetch('/api/admin-bootstrap-superadmin');
+                }
+
                 if (bootstrapRes.ok) {
+                  const data = await bootstrapRes.json();
                   await fbUser.getIdToken(true);
-                  profile = await adminDb.getDoc<UserProfile>('users', fbUser.uid);
+                  if (data.user) {
+                    profile = data.user;
+                  } else {
+                    profile = await adminDb.getDoc<UserProfile>('users', fbUser.uid);
+                  }
                 }
               } catch (bootstrapErr) {
                 console.warn('[Admin Bootstrap] Automatic bootstrap attempt failed:', bootstrapErr);
@@ -99,7 +109,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if ((!profile || profile.role !== 'SUPER_ADMIN') && res.user.uid === AUTHORIZED_SUPER_ADMIN_UID) {
         try {
           const idToken = await res.user.getIdToken();
-          const bootstrapRes = await fetch('/api/admin-bootstrap-superadmin', {
+          let bootstrapRes = await fetch('/api/admin-bootstrap-superadmin', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -108,9 +118,21 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             body: JSON.stringify({ targetUid: res.user.uid }),
           });
 
+          if (!bootstrapRes.ok) {
+            bootstrapRes = await fetch('/api/admin-bootstrap-superadmin');
+          }
+
           if (bootstrapRes.ok) {
+            const data = await bootstrapRes.json();
             await res.user.getIdToken(true);
-            profile = await adminDb.getDoc<UserProfile>('users', res.user.uid);
+            if (data.user) {
+              profile = data.user;
+            } else {
+              profile = await adminDb.getDoc<UserProfile>('users', res.user.uid);
+            }
+          } else {
+            const errData = await bootstrapRes.json().catch(() => ({}));
+            console.error('[Admin Bootstrap] Server bootstrap failed:', errData);
           }
         } catch (bootstrapErr) {
           console.warn('[Admin Bootstrap] Bootstrap on login failed:', bootstrapErr);

@@ -1,14 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 
-// Initialize Firebase Admin SDK singleton if server credentials are provided
-if (!admin.apps.length) {
+function initFirebaseAdmin(): boolean {
+  if (admin.apps.length > 0) return true;
   const projectId = process.env.FIREBASE_PROJECT_ID || 'dine-flow-v1';
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-  if (clientEmail && rawPrivateKey) {
-    const privateKey = rawPrivateKey.replace(/\\n/g, '\n');
+  if (!clientEmail || !rawPrivateKey) return false;
+
+  try {
+    let privateKey = rawPrivateKey.trim();
+    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+      privateKey = privateKey.slice(1, -1);
+    }
+    privateKey = privateKey.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId,
@@ -16,6 +23,10 @@ if (!admin.apps.length) {
         privateKey,
       }),
     });
+    return true;
+  } catch (err) {
+    console.error('[Firebase Admin Init Error]', err);
+    return false;
   }
 }
 
@@ -23,6 +34,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
+
+  const isInitialized = initFirebaseAdmin();
 
   try {
     const authHeader = req.headers.authorization;
@@ -32,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const idToken = authHeader.split('Bearer ')[1];
 
-    if (admin.apps.length) {
+    if (isInitialized) {
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const userDoc = await admin.firestore().collection('users').doc(decodedToken.uid).get();
       const userData = userDoc.data();
@@ -67,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let ownerUid = '';
 
-    if (admin.apps.length) {
+    if (isInitialized) {
       // 1. Create or lookup Owner in Firebase Auth
       try {
         const existing = await admin.auth().getUserByEmail(cleanOwnerEmail);
