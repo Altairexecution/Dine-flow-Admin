@@ -59,7 +59,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let authUsers: any[] = [];
     let firestoreUsers: any[] = [];
     let firestoreRestaurants: any[] = [];
-    let testResults: any = null;
 
     if (initResult.initialized) {
       try {
@@ -93,78 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           firestoreRole = userDoc.data()?.role || null;
         }
 
-        if (req.query.verifyAndProvision === '1') {
-          testResults = {};
-          // 1. Update Super Admin password to DineFlowAdmin2026!
-          await admin.auth().updateUser(AUTHORIZED_SUPER_ADMIN_UID, {
-            password: 'DineFlowAdmin2026!',
-          });
-          testResults.superAdminPasswordSet = 'DineFlowAdmin2026!';
 
-          // 2. Provision or update Lotus Cafe Owner
-          let ownerUserRecord;
-          try {
-            ownerUserRecord = await admin.auth().getUserByEmail('owner@lotuscafe.com');
-            await admin.auth().updateUser(ownerUserRecord.uid, {
-              password: 'DineFlowOwner2026!',
-            });
-          } catch (e: any) {
-            if (e.code === 'auth/user-not-found') {
-              ownerUserRecord = await admin.auth().createUser({
-                email: 'owner@lotuscafe.com',
-                password: 'DineFlowOwner2026!',
-                displayName: 'Lotus Cafe Owner',
-              });
-            } else {
-              throw e;
-            }
-          }
-
-          // 3. Update Firestore owner user profile
-          const ownerProfile = {
-            id: ownerUserRecord.uid,
-            email: 'owner@lotuscafe.com',
-            name: 'Lotus Cafe Owner',
-            role: 'OWNER',
-            restaurantId: 'rest_lotus_cafe',
-            restaurantName: 'Lotus cafe',
-            status: 'active',
-            updatedAt: new Date().toISOString(),
-          };
-          await admin.firestore().collection('users').doc(ownerUserRecord.uid).set(ownerProfile, { merge: true });
-          testResults.ownerUserUid = ownerUserRecord.uid;
-          testResults.ownerPasswordSet = 'DineFlowOwner2026!';
-
-          // 4. Test live login against Firebase Identity Toolkit REST API
-          const apiKey = 'AIzaSyDhJSexmcfhNvUEs5o-w0Aq9DbORuXGDqk';
-          const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
-
-          // Test Admin Login
-          const adminSignInRes = await fetch(signInUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: 'sparkscale26@gmail.com',
-              password: 'DineFlowAdmin2026!',
-              returnSecureToken: true,
-            }),
-          });
-          testResults.adminSignInStatus = adminSignInRes.status;
-          testResults.adminSignInSuccess = adminSignInRes.ok;
-
-          // Test Owner Login
-          const ownerSignInRes = await fetch(signInUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: 'owner@lotuscafe.com',
-              password: 'DineFlowOwner2026!',
-              returnSecureToken: true,
-            }),
-          });
-          testResults.ownerSignInStatus = ownerSignInRes.status;
-          testResults.ownerSignInSuccess = ownerSignInRes.ok;
-        }
         if (customClaims?.role !== 'SUPER_ADMIN' || !userDoc.exists || firestoreRole !== 'SUPER_ADMIN') {
           await admin.auth().setCustomUserClaims(AUTHORIZED_SUPER_ADMIN_UID, { role: 'SUPER_ADMIN' });
           const userProfile = {
@@ -211,7 +139,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       authUsers,
       firestoreUsers,
       firestoreRestaurants,
-      testResults,
       authError,
     });
   }
