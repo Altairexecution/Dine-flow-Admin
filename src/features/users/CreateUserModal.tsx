@@ -8,7 +8,7 @@ import { adminDb } from '../../lib/dbAdapter';
 import { useToast } from '../../context/ToastContext';
 import { generateRandomPassword } from '../../lib/utils';
 import { Restaurant } from '../../types/restaurant';
-import { Lock, Copy, Check, Sparkles, UserPlus } from 'lucide-react';
+import { Lock, Copy, Check, Sparkles, UserPlus, AlertCircle } from 'lucide-react';
 
 export interface CreateUserModalProps {
   isOpen: boolean;
@@ -140,6 +140,13 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
                 <span className="text-slate-400">Assigned Role:</span>
                 <span className="text-blue-300 font-bold">{provisionedCreds.role}</span>
               </div>
+            </div>
+
+            <div className="flex items-start gap-2 p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-amber-200 text-xs">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Login Instruction:</strong> The user must sign in using their <strong>Email Address</strong> ({provisionedCreds.email}), NOT the user ID or restaurant ID.
+              </span>
             </div>
           </div>
 

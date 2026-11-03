@@ -67,11 +67,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ message: 'Invalid operation: Cannot create SUPER_ADMIN accounts via restaurant provisioning.' });
     }
 
+    if (!isInitialized) {
+      return res.status(500).json({
+        message: 'Firebase Admin SDK is not initialized on the server. Please check server environment variables.',
+      });
+    }
+
     let uid = '';
     const cleanEmail = email.toLowerCase().trim();
 
-    if (isInitialized) {
-      // 1. Create or retrieve Firebase Auth User securely on server
+    // 1. Create or retrieve Firebase Auth User securely on server
       try {
         const existingUser = await admin.auth().getUserByEmail(cleanEmail);
         uid = existingUser.uid;
@@ -102,21 +107,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         { merge: true }
       );
-    } else {
-      // Fallback timestamp UID
-      uid = `usr_${Date.now().toString(36)}`;
-    }
 
-    return res.status(200).json({
-      success: true,
-      uid,
-      email: cleanEmail,
-      name,
-      role,
-      restaurantId,
-      temporaryPassword,
-      message: 'Account successfully provisioned in Firebase Auth and Firestore.',
-    });
+      return res.status(200).json({
+        success: true,
+        uid,
+        email: cleanEmail,
+        name,
+        role,
+        restaurantId,
+        temporaryPassword,
+        message: 'Account successfully provisioned in Firebase Auth and Firestore.',
+      });
   } catch (error: any) {
     console.error('[Admin Provisioning Error]', error);
     return res.status(500).json({

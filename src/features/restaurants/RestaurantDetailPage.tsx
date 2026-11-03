@@ -8,8 +8,9 @@ import { Restaurant } from '../../types/restaurant';
 import { UserProfile } from '../../types/auth';
 import { adminDb } from '../../lib/dbAdapter';
 import { useToast } from '../../context/ToastContext';
-import { ArrowLeft, Store, Users, ExternalLink, Mail, Phone, MapPin, Power } from 'lucide-react';
+import { ArrowLeft, Store, Users, ExternalLink, Mail, Phone, MapPin, Power, KeyRound, Info } from 'lucide-react';
 import { CreateUserModal } from '../users/CreateUserModal';
+import { ResetPasswordModal } from '../users/ResetPasswordModal';
 
 export const RestaurantDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +20,7 @@ export const RestaurantDetailPage: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
+  const [resetUser, setResetUser] = useState<UserProfile | null>(null);
 
   const dineflowAppUrl = import.meta.env.VITE_DINEFLOW_APP_URL || 'https://dineflowv1.vercel.app';
 
@@ -170,6 +172,7 @@ export const RestaurantDetailPage: React.FC = () => {
                     <th className="pb-3">Email Address</th>
                     <th className="pb-3">Role</th>
                     <th className="pb-3">UID</th>
+                    <th className="pb-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -186,6 +189,16 @@ export const RestaurantDetailPage: React.FC = () => {
                         </Badge>
                       </td>
                       <td className="py-3 text-slate-500 font-mono text-[10px]">{u.id}</td>
+                      <td className="py-3 text-right">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setResetUser(u)}
+                          leftIcon={<KeyRound className="w-3.5 h-3.5 text-purple-400" />}
+                        >
+                          Reset Password
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -205,6 +218,14 @@ export const RestaurantDetailPage: React.FC = () => {
           setIsCreateUserOpen(false);
           loadData();
         }}
+      />
+
+      {/* Reset Password Modal */}
+      <ResetPasswordModal
+        isOpen={Boolean(resetUser)}
+        user={resetUser}
+        onClose={() => setResetUser(null)}
+        onSuccess={loadData}
       />
     </div>
   );

@@ -8,7 +8,8 @@ import { UserProfile } from '../../types/auth';
 import { Restaurant } from '../../types/restaurant';
 import { adminDb } from '../../lib/dbAdapter';
 import { CreateUserModal } from './CreateUserModal';
-import { Users, Plus, Search, Shield, Building2 } from 'lucide-react';
+import { ResetPasswordModal } from './ResetPasswordModal';
+import { Users, Plus, Search, Shield, Building2, KeyRound } from 'lucide-react';
 
 export const UsersListPage: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -17,6 +18,7 @@ export const UsersListPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | 'SUPER_ADMIN' | 'OWNER' | 'MANAGER' | 'STAFF'>('ALL');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [resetUser, setResetUser] = useState<UserProfile | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -121,6 +123,7 @@ export const UsersListPage: React.FC = () => {
                   <th className="py-3.5 px-4">Role</th>
                   <th className="py-3.5 px-4">UID</th>
                   <th className="py-3.5 px-5">Status</th>
+                  <th className="py-3.5 px-5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -169,6 +172,16 @@ export const UsersListPage: React.FC = () => {
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
                       </span>
                     </td>
+                    <td className="py-4 px-5 text-right">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setResetUser(u)}
+                        leftIcon={<KeyRound className="w-3.5 h-3.5 text-purple-400" />}
+                      >
+                        Reset Password
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -184,6 +197,13 @@ export const UsersListPage: React.FC = () => {
           setIsCreateOpen(false);
           loadData();
         }}
+      />
+
+      <ResetPasswordModal
+        isOpen={Boolean(resetUser)}
+        user={resetUser}
+        onClose={() => setResetUser(null)}
+        onSuccess={loadData}
       />
     </div>
   );

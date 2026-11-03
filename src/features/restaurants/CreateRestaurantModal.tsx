@@ -5,7 +5,7 @@ import { Input } from '../../components/ui/Input';
 import { adminApiClient } from '../../lib/adminApiClient';
 import { useToast } from '../../context/ToastContext';
 import { generateRandomPassword } from '../../lib/utils';
-import { Store, User, Lock, Copy, Check, Sparkles } from 'lucide-react';
+import { Store, User, Lock, Copy, Check, Sparkles, AlertCircle } from 'lucide-react';
 
 export interface CreateRestaurantModalProps {
   isOpen: boolean;
@@ -154,8 +154,15 @@ export const CreateRestaurantModal: React.FC<CreateRestaurantModalProps> = ({
               </div>
             </div>
 
+            <div className="flex items-start gap-2 p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-amber-200 text-xs">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Login Instruction:</strong> Sign in with the <strong>Owner Email</strong> ({provisionedCreds.email}) and password. Do <strong>NOT</strong> enter the restaurant ID or user ID in the email field.
+              </span>
+            </div>
+
             <p className="text-[11px] text-slate-400">
-              ⚠️ Note: This temporary password is only displayed once now. Instruct the owner to change it upon first login.
+              ⚠️ Note: You can view or reset this user's password at any time from the Platform Users directory.
             </p>
           </div>
 

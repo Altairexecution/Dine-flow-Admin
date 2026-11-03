@@ -80,8 +80,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let ownerUid = '';
 
-    if (isInitialized) {
-      // 1. Create or lookup Owner in Firebase Auth
+    if (!isInitialized) {
+      return res.status(500).json({
+        message: 'Firebase Admin SDK is not initialized on the server. Please check server environment variables.',
+      });
+    }
+
+    // 1. Create or lookup Owner in Firebase Auth
       try {
         const existing = await admin.auth().getUserByEmail(cleanOwnerEmail);
         ownerUid = existing.uid;
@@ -140,15 +145,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         temporaryPassword: ownerPassword,
         message: 'Restaurant tenant and Owner account provisioned in Firebase.',
       });
-    }
-
-    return res.status(200).json({
-      success: true,
-      restaurant: { id: restaurantId, name, slug: cleanSlug, phone, email, address, city },
-      owner: { id: `usr_${Date.now().toString(36)}`, email: cleanOwnerEmail, name: ownerName, role: 'OWNER', restaurantId },
-      temporaryPassword: ownerPassword,
-      message: 'Provisioned.',
-    });
   } catch (error: any) {
     console.error('[Admin Create Restaurant Error]', error);
     return res.status(500).json({

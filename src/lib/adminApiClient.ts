@@ -1,4 +1,4 @@
-import { auth } from './firebase';
+import { auth, isFirebaseConfigured } from './firebase';
 import {
   ProvisionUserRequest,
   ProvisionUserResponse,
@@ -9,6 +9,23 @@ import { adminDb } from './dbAdapter';
 import { generateId } from './utils';
 import { Restaurant } from '../types/restaurant';
 import { UserProfile } from '../types/auth';
+
+export interface ResetPasswordRequest {
+  uid?: string;
+  email: string;
+  newPassword: string;
+  name?: string;
+  role?: string;
+  restaurantId?: string;
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
+  uid: string;
+  email: string;
+  temporaryPassword: string;
+  message: string;
+}
 
 class AdminApiClient {
   private async getAuthHeader(): Promise<HeadersInit> {
@@ -34,6 +51,9 @@ class AdminApiClient {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || `Provisioning failed with HTTP ${res.status}`);
     } catch (apiError) {
+      if (isFirebaseConfigured) {
+        throw apiError;
+      }
       console.warn('[Admin API] Serverless endpoint unavailable or local mode, provisioning directly into Firestore authorization layer:', apiError);
 
       // Direct Firestore Provisioning for local testing / direct DB mode
@@ -79,6 +99,9 @@ class AdminApiClient {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || `Tenant creation failed with HTTP ${res.status}`);
     } catch (apiError) {
+      if (isFirebaseConfigured) {
+        throw apiError;
+      }
       console.warn('[Admin API] Serverless endpoint unavailable, executing Firestore tenant creation:', apiError);
 
       const restaurantId = `rest_${req.slug.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
@@ -124,6 +147,21 @@ class AdminApiClient {
         message: 'Restaurant tenant and Owner account provisioned in Firestore.',
       };
     }
+  }
+
+  async resetPassword(req: ResetPasswordRequest): Promise<ResetPasswordResponse> {
+    const headers = await this.getAuthHeader();
+    const res = await fetch('/api/admin-reset-password', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(req),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    }
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || `Password reset failed with HTTP ${res.status}`);
   }
 }
 
