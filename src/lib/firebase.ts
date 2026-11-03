@@ -12,12 +12,12 @@ const rawAppId = import.meta.env.VITE_FIREBASE_APP_ID;
 
 const clean = (val?: string) => (val ? val.trim().replace(/^['"]|['"]$/g, '') : undefined);
 
-const apiKey = clean(rawApiKey);
+const apiKey = clean(rawApiKey) || 'AIzaSyDhJSexmcfhNvUEs5o-w0Aq9DbORuXGDqk';
 const projectId = clean(rawProjectId) || 'dine-flow-v1';
 const authDomain = clean(rawAuthDomain) || `${projectId}.firebaseapp.com`;
 const storageBucket = clean(rawStorageBucket) || `${projectId}.firebasestorage.app`;
-const messagingSenderId = clean(rawSenderId);
-const appId = clean(rawAppId);
+const messagingSenderId = clean(rawSenderId) || '790325492444';
+const appId = clean(rawAppId) || '1:790325492444:web:0b25e791eebc95353c9b7e';
 
 const firebaseConfig = {
   apiKey,
