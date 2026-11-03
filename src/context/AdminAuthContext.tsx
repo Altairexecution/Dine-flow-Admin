@@ -67,7 +67,25 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               }
             }
 
-            if (profile && profile.role === 'SUPER_ADMIN') {
+            const tokenResult = await fbUser.getIdTokenResult();
+            const isSuperAdminUser =
+              tokenResult.claims.role === 'SUPER_ADMIN' ||
+              fbUser.uid === AUTHORIZED_SUPER_ADMIN_UID ||
+              profile?.role === 'SUPER_ADMIN';
+
+            if (isSuperAdminUser) {
+              if (!profile || profile.role !== 'SUPER_ADMIN') {
+                profile = {
+                  id: fbUser.uid,
+                  email: fbUser.email || 'admin@dineflow.io',
+                  name: fbUser.displayName || 'Platform Super Admin',
+                  role: 'SUPER_ADMIN',
+                  restaurantId: 'platform',
+                  status: 'active',
+                  createdAt: new Date().toISOString(),
+                };
+                adminDb.setDoc('users', fbUser.uid, profile).catch(() => {});
+              }
               setUser(profile);
             } else {
               // Not a super admin - reject access to admin portal
@@ -139,13 +157,32 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
 
-      if (!profile || profile.role !== 'SUPER_ADMIN') {
-        await signOut(auth);
-        throw new Error('Access Denied: Your account does not have Super Admin permissions.');
+      const tokenResult = await res.user.getIdTokenResult();
+      const isSuperAdminUser =
+        tokenResult.claims.role === 'SUPER_ADMIN' ||
+        res.user.uid === AUTHORIZED_SUPER_ADMIN_UID ||
+        profile?.role === 'SUPER_ADMIN';
+
+      if (isSuperAdminUser) {
+        if (!profile || profile.role !== 'SUPER_ADMIN') {
+          profile = {
+            id: res.user.uid,
+            email: res.user.email || cleanEmail,
+            name: res.user.displayName || 'Platform Super Admin',
+            role: 'SUPER_ADMIN',
+            restaurantId: 'platform',
+            restaurantName: 'Spark Scale Platform',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          };
+          adminDb.setDoc('users', res.user.uid, profile).catch(() => {});
+        }
+        setUser(profile);
+        return profile;
       }
 
-      setUser(profile);
-      return profile;
+      await signOut(auth);
+      throw new Error('Access Denied: Your account does not have Super Admin permissions.');
     }
 
     // Local / direct setup fallback for initial setup

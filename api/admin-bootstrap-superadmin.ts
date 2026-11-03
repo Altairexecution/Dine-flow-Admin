@@ -49,6 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const hasPrivateKey = Boolean(process.env.FIREBASE_PRIVATE_KEY);
 
     let targetUserExists: boolean | null = null;
+    let targetUserEmail: string | null = null;
     let customClaims: Record<string, unknown> | null = null;
     let firestoreProfileExists: boolean | null = null;
     let firestoreRole: string | null = null;
@@ -59,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const userRecord = await admin.auth().getUser(AUTHORIZED_SUPER_ADMIN_UID);
         targetUserExists = true;
+        targetUserEmail = userRecord.email || null;
         customClaims = (userRecord.customClaims as Record<string, unknown>) || {};
 
         const userDoc = await admin.firestore().collection('users').doc(AUTHORIZED_SUPER_ADMIN_UID).get();
@@ -106,6 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       targetUid: AUTHORIZED_SUPER_ADMIN_UID,
       targetUserExists,
+      targetUserEmail,
       customClaims,
       firestoreProfileExists,
       firestoreRole,

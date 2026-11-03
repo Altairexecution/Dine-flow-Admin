@@ -28,7 +28,12 @@ export const AdminLoginPage: React.FC = () => {
       toast.success('Authentication Successful', 'Welcome to the DineFlow Control Center.');
       navigate('/dashboard');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Invalid Super Admin credentials';
+      let msg = err instanceof Error ? err.message : 'Invalid Super Admin credentials';
+      if (msg.includes('auth/invalid-credential') || msg.includes('auth/user-not-found') || msg.includes('auth/wrong-password')) {
+        msg = 'Invalid email or password. Please verify your Super Admin credentials.';
+      } else if (msg.includes('auth/invalid-email')) {
+        msg = 'Please enter a valid email address.';
+      }
       toast.error('Sign-in Failed', msg);
     } finally {
       setIsLoading(false);
