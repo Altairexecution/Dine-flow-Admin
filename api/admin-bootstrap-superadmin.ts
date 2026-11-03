@@ -56,8 +56,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let authError: string | null = null;
     let autoBootstrapped = false;
 
+    let authUsers: any[] = [];
+    let firestoreUsers: any[] = [];
+    let firestoreRestaurants: any[] = [];
+
     if (initResult.initialized) {
       try {
+        const listUsersResult = await admin.auth().listUsers(20);
+        authUsers = listUsersResult.users.map((u) => ({
+          uid: u.uid,
+          email: u.email,
+          displayName: u.displayName,
+          customClaims: u.customClaims,
+        }));
+
+        const usersSnap = await admin.firestore().collection('users').get();
+        firestoreUsers = usersSnap.docs.map((d) => d.data());
+
+        const restsSnap = await admin.firestore().collection('restaurants').get();
+        firestoreRestaurants = restsSnap.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name,
+          slug: d.data().slug,
+          ownerEmail: d.data().ownerEmail,
+        }));
+
         const userRecord = await admin.auth().getUser(AUTHORIZED_SUPER_ADMIN_UID);
         targetUserExists = true;
         targetUserEmail = userRecord.email || null;
@@ -113,6 +136,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       firestoreProfileExists,
       firestoreRole,
       autoBootstrapped,
+      authUsers,
+      firestoreUsers,
+      firestoreRestaurants,
       authError,
     });
   }
